@@ -2,8 +2,8 @@
 //  AppDelegate.swift
 //  DemoforActionLabel
 //
-//  Created by Nilesh on 18/05/17.
-//  Copyright © 2017 Nilesh. All rights reserved.
+//  Created by Nilesh Phadtare on 18/05/17.
+//  Copyright © 2017 Nilesh Phadtare. All rights reserved.
 //
 
 import UIKit
