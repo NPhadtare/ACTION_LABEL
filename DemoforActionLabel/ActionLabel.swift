@@ -17,10 +17,12 @@ import UIKit
     @objc optional func actionLabelTextOptionDidChangeText(_ actionLabelTextField: ActionLabel)
     @objc optional func actionLabelTextOptionShouldClear(_ actionLabelTextField: ActionLabel) -> Bool
     @objc optional func actionLabelTextOptionShouldReturn(_ actionLabelTextField: ActionLabel) -> Bool
-    @objc optional func actionLabelDidSelect(_ actionLabelTextField: ActionLabel, selectedWord: String, range: NSRange)
-  
-    @objc optional func actionLabelDidChangeTextValue(_ actionLabelTextField: ActionLabel, selectedWord: String, index: Int, range: NSRange)
-    @objc optional func actionLabelDidChangeOptionValue(_ actionLabelTextField: ActionLabel, selectedWord: String, index: Int, range: NSRange)
+    
+    @objc func actionLabelDidSelect(_ actionLabelTextField: ActionLabel, selectedWord: String, range: NSRange, actionType: ActionType) -> Bool
+    
+    @objc optional func actionLabelDidChangeTextValue(_ actionLabelTextField: ActionLabel, selectedWord: String, index: Int, range: NSRange, order: Int)
+    
+    @objc optional func actionLabelDidChangeOptionValue(_ actionLabelTextField: ActionLabel, selectedWord: String, index: Int, range: NSRange, order: Int)
     @objc optional func actionLabelDidChangeDateValue(_ actionLabelTextField: ActionLabel, selectedWord: String, index: Int, range: NSRange)
     
     @objc optional func actionLabelDidCancelOptionSelect(_ actionLabelTextField: ActionLabel)
@@ -33,25 +35,36 @@ import UIKit
     case EditText
     case DropDown
     case DateDropDown
-
 }
 
+let downArrow = " ▾"
 let ALActionWordName = "string"
 let ALActionWordType = "type"
 let ALActionWordOptions = "Options"
 let ALActionWordDateType = "dateType"
 let ALActionWordDateFormat = "dateFormat"
+let ALActionOrder = "order"
+let ALActionWordIndex = "index"
 
 class ActionLabel: UIView {
     
-    fileprivate var txtField: UITextField!
+    struct Constants {
+        static let doneString = "Done"
+        static let plsEnterSomeValueString =  "Please enter some value."
+        static let valueCannotBeZeroString = "Value can not be zero."
+    }
+    public var txtField: UITextField! {
+        didSet {
+            txtField.isHidden = true
+        }
+    }
     private var fieldTitleLeftPaddingConstraint: NSLayoutConstraint!
     private var fieldTitleRightPaddingConstraint: NSLayoutConstraint!
     private var fieldTitleBottomSpacingConstraint: NSLayoutConstraint!
     private var textFieldBottomSpacingConstraint: NSLayoutConstraint!
     private var pickerBottomSpacingConstraint: NSLayoutConstraint!
     private var datePickerBottomSpacingConstraint: NSLayoutConstraint!
-
+    
     fileprivate var heightCorrection: CGFloat = 0
     internal lazy var textStorage = NSTextStorage()
     fileprivate lazy var layoutManager = NSLayoutManager()
@@ -65,30 +78,49 @@ class ActionLabel: UIView {
             accesoryView.layer.borderWidth = 2
         }
     }
-    fileprivate var pickerContainerView: UIView!
+    
+    fileprivate var pickerContainerView: UIView!{
+        didSet{
+            if #available(iOS 13.0, *) {
+                pickerContainerView.backgroundColor = UIColor.systemGray2
+            } else {
+                // Fallback on earlier versions
+            }
+        }
+    }
     fileprivate var pickerView: UIPickerView!
     fileprivate var toolBarView: UIToolbar!
-
-    fileprivate var datePickerContainerView: UIView!
+    
+    fileprivate var datePickerContainerView: UIView!{
+        didSet{
+            if #available(iOS 13.0, *) {
+                datePickerContainerView.backgroundColor = UIColor.systemGray2
+            } else {
+                // Fallback on earlier versions
+            }
+        }
+    }
     fileprivate var datePickerView: UIDatePicker!
     fileprivate var dateToolBarView: UIToolbar!
     
     fileprivate var btnDone: UIButton! {
         didSet {
-            btnDone.setTitle("Done", for: .normal)
+            btnDone.setTitle(Constants.doneString, for: .normal)
             btnDone.setTitleColor(UIColor.blue, for: .normal)
             btnDone.addTarget(self, action: #selector(ActionLabel.btnDoneAction(_:)), for: .touchUpInside)
         }
     }
-
+    
     fileprivate var selectedStringDict = [String : Any]()
     fileprivate var _customizing: Bool = true
-
-    var labelTitleColor = UIColor.black
-    var labelTitleFont = UIFont.systemFont(ofSize: 20)
-    var actionWordColor = UIColor.blue
+    fileprivate var selectedRange : NSRange?
+    fileprivate var selectedLocation : CGPoint?
+    var selectedDate : Date? = Date()
+    
+    //var labelTitleColor = UIColor.black
+    //var labelTitleFont = UIFont.systemFont(ofSize: 20)
     var actionWordRange = [[String: Any]]()
-
+    
     var font = UIFont.systemFont(ofSize: 20) {
         didSet {
             if txtField != nil { txtField.font = font }
@@ -102,11 +134,19 @@ class ActionLabel: UIView {
         }
     }
     
-    var numberOfLines = 1 {
-        didSet { textContainer.maximumNumberOfLines = numberOfLines; updateTextStorage(parseText: false) }
+    var keypadMode = UIKeyboardType.default {
+        didSet {
+            txtField.keyboardType = keypadMode
+            updateTextStorage(parseText: false)
+        }
     }
     
-    var lineBreakMode =  NSLineBreakMode.byTruncatingTail {
+    var numberOfLines = 0 {
+        didSet { textContainer.maximumNumberOfLines = numberOfLines; textContainer.heightTracksTextView = true; self.layoutManager.textContainerChangedGeometry(self.textContainer)
+            self.setNeedsDisplay(); updateTextStorage(parseText: false) }
+    }
+    
+    var lineBreakMode =  NSLineBreakMode.byWordWrapping {
         didSet { textContainer.lineBreakMode = lineBreakMode; updateTextStorage(parseText: false) }
     }
     
@@ -118,17 +158,18 @@ class ActionLabel: UIView {
     
     var actionWords = [[String: Any]]() {
         didSet {
+            makeUserIdentifiebleActionWords()
             fetchrangeOfActionWords()
             updateTextStorage(parseText: false)
         }
     }
     var text: String? {
         get { return txtField.text }
-        set { txtField.text = text }
+        set { txtField.text = newValue }
     }
     var placeholder: String? {
         get { return txtField.placeholder }
-        set { txtField.placeholder = placeholder }
+        set { txtField.placeholder = newValue }
     }
     
     var keyboardType = UIKeyboardType.default { didSet { txtField.keyboardType = keyboardType } }
@@ -179,7 +220,7 @@ class ActionLabel: UIView {
     private func setup() {
         backgroundColor = UIColor.clear
         contentMode = .redraw
-
+        
         if (txtField == nil) {
             txtField = UITextField(frame: CGRect.zero)
             txtField.translatesAutoresizingMaskIntoConstraints = false
@@ -188,25 +229,27 @@ class ActionLabel: UIView {
             txtField.font = font
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(ActionLabel.keyboardStateChanged(notification:)), name: .UIKeyboardWillShow, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(ActionLabel.keyboardStateChanged(notification:)), name: .UIKeyboardWillHide, object: nil)
-
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(ActionLabel.keyboardStateChanged(notification:)), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(ActionLabel.keyboardStateChanged(notification:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        
         // Configure layoutManager and textStorage
         layoutManager.addTextContainer(textContainer)
         textStorage.addLayoutManager(layoutManager)
         
         // Configure textContainer
         textContainer.lineFragmentPadding = 0.0
-        textContainer.lineBreakMode = lineBreakMode
         textContainer.maximumNumberOfLines = numberOfLines
+        textContainer.heightTracksTextView = true
+        textContainer.lineBreakMode = lineBreakMode
         
         let gesture = UITapGestureRecognizer(target: self, action: #selector(ActionLabel.tap(_ :)))
         gesture.cancelsTouchesInView = false
         self.addGestureRecognizer(gesture)
-
+        
         // add observer
-        NotificationCenter.default.addObserver(self, selector: #selector(ActionLabel.textDidChange(notification:)), name: .UITextFieldTextDidChange, object: txtField)
-
+        NotificationCenter.default.addObserver(self, selector: #selector(ActionLabel.textDidChange(notification:)), name: UITextField.textDidChangeNotification, object: txtField)
+        
     }
     
     fileprivate func updateTextStorage(parseText: Bool = true) {
@@ -215,6 +258,7 @@ class ActionLabel: UIView {
         guard let attributedText = labelText, attributedText.length > 0 else {
             //clearActiveElements()
             textStorage.setAttributedString(NSAttributedString())
+            invalidateIntrinsicContentSize()
             setNeedsDisplay()
             return
         }
@@ -224,26 +268,21 @@ class ActionLabel: UIView {
         addLinkAttribute(mutAttrString)
         textStorage.setAttributedString(mutAttrString)
         _customizing = true
-        text = mutAttrString.string
+        //text = mutAttrString.string
         _customizing = false
+        invalidateIntrinsicContentSize()
         setNeedsDisplay()
     }
     
     /// add link attribute
     fileprivate func addLinkAttribute(_ mutAttrString: NSMutableAttributedString) {
         var range = NSRange(location: 0, length: 0)
-        var attributes = mutAttrString.attributes(at: 0, effectiveRange: &range)
-        
-        attributes[NSFontAttributeName] = labelTitleFont
-        attributes[NSForegroundColorAttributeName] = labelTitleColor
+        let attributes = mutAttrString.attributes(at: 0, effectiveRange: &range)
         mutAttrString.addAttributes(attributes, range: range)
-        
-        attributes[NSForegroundColorAttributeName] = labelTitleColor
         mutAttrString.setAttributes(attributes, range: range)
     }
-
     
-    @IBInspectable public var lineSpacing: CGFloat = 0 {
+    @IBInspectable public var lineSpacing: CGFloat = 2 {
         didSet { updateTextStorage(parseText: false) }
     }
     
@@ -257,16 +296,15 @@ class ActionLabel: UIView {
         var range = NSRange(location: 0, length: 0)
         var attributes = mutAttrString.attributes(at: 0, effectiveRange: &range)
         
-        let paragraphStyle = attributes[NSParagraphStyleAttributeName] as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = NSLineBreakMode.byWordWrapping
+        let paragraphStyle = attributes[NSAttributedString.Key.paragraphStyle] as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = lineBreakMode
         paragraphStyle.alignment = textAlignment
         paragraphStyle.lineSpacing = lineSpacing
         paragraphStyle.minimumLineHeight = minimumLineHeight > 0 ? minimumLineHeight: self.font.pointSize * 1.14
-        attributes[NSParagraphStyleAttributeName] = paragraphStyle
+        attributes[NSAttributedString.Key.paragraphStyle] = paragraphStyle
         mutAttrString.setAttributes(attributes, range: range)
         return mutAttrString
     }
-    
     func setupDropDownView() {
         if (pickerContainerView == nil) {
             pickerContainerView = UIView(frame: CGRect.zero)
@@ -326,7 +364,9 @@ class ActionLabel: UIView {
                 datePickerView.translatesAutoresizingMaskIntoConstraints = false
                 datePickerContainerView.addSubview(datePickerView)
             }
-            
+            if #available(iOS 14.0, *) {
+                datePickerView.preferredDatePickerStyle = .wheels
+            }
             datePickerBottomSpacingConstraint = NSLayoutConstraint(item: viewController?.view ?? UIView(), attribute: .bottom, relatedBy: .equal, toItem: datePickerContainerView , attribute: .bottom, multiplier: 1.0, constant: -216)
             viewController?.view.addConstraint(datePickerBottomSpacingConstraint)
             
@@ -337,12 +377,12 @@ class ActionLabel: UIView {
             datePickerContainerView.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: "H:|[datePickerView]|", options: .directionLeftToRight, metrics: nil, views: ["datePickerView": datePickerView]))
         }
     }
-    
     func setupAccesorView() {
         if (accesoryView == nil) {
-            accesoryView = UIView(frame: CGRect.zero)
+            accesoryView = UIView(frame: .zero)
             accesoryView.isHidden = true
             accesoryView.translatesAutoresizingMaskIntoConstraints = false
+            accesoryView.backgroundColor = UIColor.white
             let viewController = self.delegate as? UIViewController
             viewController?.view.addSubview(accesoryView)
             
@@ -350,65 +390,182 @@ class ActionLabel: UIView {
                 accesoryView.addSubview(txtField)
             }
             if (btnDone == nil) {
-                btnDone = UIButton(frame: CGRect.zero)
+                btnDone = UIButton(type: .custom)
                 btnDone.translatesAutoresizingMaskIntoConstraints = false
                 btnDone.titleLabel?.font = font
+                btnDone.setContentHuggingPriority(UILayoutPriority(rawValue: 252), for: .horizontal)
                 accesoryView.addSubview(btnDone)
             }
             
-            textFieldBottomSpacingConstraint = NSLayoutConstraint(item: accesoryView, attribute: .bottom, relatedBy: .equal, toItem: viewController?.view ?? UIView(), attribute: .bottom, multiplier: 1.0, constant: 0)
-            viewController?.view.addConstraint(textFieldBottomSpacingConstraint)
-            
-            viewController?.view.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: "H:|[accesoryView]|", options: .directionLeftToRight, metrics: nil, views: ["accesoryView": accesoryView]))
-            
-            let width = (self.frame.size.width - 105)
-            accesoryView.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: String(format: "H:|-20-[txtField(%f)]-5-[btnDone(%d)]|",width,80), options: .directionLeftToRight, metrics: nil, views: ["txtField": txtField, "btnDone": btnDone]))
-            accesoryView.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: "V:|[txtField]|", options: .directionLeftToRight, metrics: nil, views: ["txtField": txtField]))
-            accesoryView.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: "V:|[btnDone]|", options: .directionLeftToRight, metrics: nil, views: ["btnDone": btnDone]))
+            if let accesoryView = accesoryView, let txtField = txtField, let btnDone = btnDone{
+                
+                textFieldBottomSpacingConstraint = NSLayoutConstraint(item: accesoryView, attribute: .bottom, relatedBy: .equal, toItem: viewController?.view ?? UIView(), attribute: .bottom, multiplier: 1.0, constant: 0)
+                viewController?.view.addConstraint(textFieldBottomSpacingConstraint)
+                
+                viewController?.view.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: "H:|[accesoryView]|", options: .directionLeftToRight, metrics: nil, views: ["accesoryView": accesoryView]))
+                
+                accesoryView.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: String(format: "H:|-[txtField]-[btnDone]-|"), options: .directionLeftToRight, metrics: nil, views: ["txtField": txtField, "btnDone": btnDone]))
+                accesoryView.addConstraints(NSLayoutConstraint.constraints(withVisualFormat: "V:|-[txtField]-|", options: .directionLeftToRight, metrics: nil, views: ["txtField": txtField]))
+                NSLayoutConstraint(item: btnDone, attribute: .centerY, relatedBy: .equal, toItem: txtField, attribute: .centerY, multiplier: 1.0, constant: 0.0).isActive = true
+            }            
         }
     }
     
-    func keyboardStateChanged(notification: NSNotification) {
-        if notification.name == .UIKeyboardWillHide {
-            accesoryView.isHidden = true
+    @objc func keyboardStateChanged(notification: NSNotification) {
+        if notification.name == UIResponder.keyboardWillHideNotification {
             textFieldBottomSpacingConstraint.constant = 0
-        }else if notification.name == .UIKeyboardWillShow {
+            // animate(for: 0.5){ [weak self] (success) in
+            self.accesoryView.isHidden = true
+            //}
+        }else if notification.name == UIResponder.keyboardWillShowNotification {
             accesoryView.isHidden = false
             if let userInfo = notification.userInfo as? [String: AnyObject] {
-                if let keyboardRect = userInfo[UIKeyboardFrameEndUserInfoKey] as? NSValue {
+                if let keyboardRect = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
                     let viewController = self.delegate as? UIViewController
                     let keyboardFrame = viewController?.view.convert(keyboardRect.cgRectValue, from: nil) //this is it!
                     textFieldBottomSpacingConstraint.constant = -(keyboardFrame?.size.height)!
+                    UIView.animate(withDuration: 0.5, animations: { [weak self] in
+                        self?.layoutIfNeeded()
+                    }) { (success) in}
                 }
             }
         }
     }
     
-    fileprivate func fetchrangeOfActionWords() {
+    func makeUserIdentifiebleActionWords(){
+        var index = 0
+        var previouseRange: NSRange?
         for dictionary in actionWords {
-                let lblString = labelText?.string
-                let string = dictionary[ALActionWordName] as? String
-                let range = lblString?.range(of: string!)
-                let from = range?.lowerBound.samePosition(in: (lblString?.utf16)!)
-                let to = range?.upperBound.samePosition(in: (lblString?.utf16)!)
-                var dict = [String:Any]()
-                dict[ALActionWordName] = string
-                let stringrange = NSRange(location: (lblString?.utf16.distance(from: (lblString?.utf16.startIndex)!, to: from!))!,
-                                    length: (lblString?.utf16.distance(from: from!, to: to!))!)
-                dict["range"] = stringrange
-                var effectiveRange = NSRange()
-
-                let atrributes = labelText?.attributes(at: (lblString?.utf16.distance(from: (lblString?.utf16.startIndex)!, to: from!))!, longestEffectiveRange: &effectiveRange, in: stringrange)
-                dict["effectiveRange"] = effectiveRange
-                dict["attributes"] = atrributes
-                dict[ALActionWordType] = dictionary[ALActionWordType] as? ActionType
-                dict[ALActionWordOptions] = dictionary[ALActionWordOptions] as? [String]
-                dict[ALActionWordDateType] = dictionary[ALActionWordDateType] as? UIDatePickerMode
-                dict[ALActionWordDateFormat] = dictionary[ALActionWordDateFormat] as? String
-                actionWordRange.append(dict)
+            let lblString = labelText?.string ?? ""
+            let string = dictionary[ALActionWordName] as? String ?? ""
+            index = dictionary[ALActionWordIndex] as? Int ?? 0
+            var range = lblString.range(of: string)
+            if index > 0 {
+                if let preR = previouseRange{
+                    let newRange = NSRange(location: (preR.location+preR.length+1), length: (lblString.count-(preR.location+preR.length+1)))
+                    range = lblString.range(of: string, options: [], range: Range(newRange, in: lblString))
+                }
+            }
+            var stringrange : NSRange
+            if range == nil {
+                stringrange = selectedStringDict["range"] as? NSRange ?? NSMakeRange(0, 1)
+                stringrange.length = 3
+            } else {
+                let from = range?.lowerBound.samePosition(in: (lblString.utf16))
+                let to = range?.upperBound.samePosition(in: (lblString.utf16))
+                stringrange = NSRange(location: (lblString.utf16.distance(from: (lblString.utf16.startIndex), to: from!)),
+                                      length: (lblString.utf16.distance(from: from!, to: to!)))
+            }
+            let type = dictionary[ALActionWordType] as? ActionType ?? ActionType.Action
+            var attr = labelText?.attributes(at: stringrange.location, effectiveRange: nil)
+            attr?[NSAttributedString.Key.underlineStyle] = NSUnderlineStyle.single.rawValue
+            attr?[NSAttributedString.Key.underlineColor] = UIColor.black
+            if string == "---"{
+                attr?[NSAttributedString.Key.foregroundColor] = UIColor.darkGray
+            } else {
+                attr?[NSAttributedString.Key.foregroundColor] = UIColor.black
+            }
+            previouseRange = stringrange
+            labelText?.setAttributes(attr, range: stringrange)
+            switch type {
+                case .DropDown:
+                    
+                    labelText?.insert(NSAttributedString(string: downArrow), at: stringrange.location+stringrange.length)
+                    labelText?.addAttributes([NSAttributedString.Key.underlineStyle: NSUnderlineStyle.single.rawValue, NSAttributedString.Key.underlineColor: UIColor.black, NSAttributedString.Key.font: UIFont.systemFont(ofSize: 20), NSAttributedString.Key.foregroundColor: UIColor.black], range: NSMakeRange(stringrange.location+stringrange.length, downArrow.count))
+                //actionWords.remove(at: index)
+                //actionWords.insert(newDictionary, at: index)
+                
+                case .DateDropDown:
+                    labelText?.insert(NSAttributedString(string: downArrow), at: stringrange.location+stringrange.length)
+                    labelText?.addAttributes([NSAttributedString.Key.underlineStyle: NSUnderlineStyle.single.rawValue, NSAttributedString.Key.underlineColor: UIColor.black, NSAttributedString.Key.font: UIFont.systemFont(ofSize: 20), NSAttributedString.Key.foregroundColor: UIColor.black], range: NSMakeRange(stringrange.location+stringrange.length, downArrow.count))
+                //actionWords.remove(at: index)
+                //actionWords.insert(newDictionary, at: index)
+                
+                default:
+                    break
+            }
+            index += downArrow.count
+        }
+        updateString()
+    }
+    fileprivate func updateString() {
+        let labelString = labelText?.string ?? ""
+        if let range = labelString.range(of:(downArrow + downArrow)), let from = range.lowerBound.samePosition(in: (labelString.utf16)), let to = range.upperBound.samePosition(in: (labelString.utf16)) {
+            let stringrange = NSRange(location: (labelString.utf16.distance(from: (labelString.utf16.startIndex), to: from)),
+                                      length: (labelString.utf16.distance(from: from, to: to)))
+            labelText?.replaceCharacters(in: stringrange, with: downArrow)
+            if let value = labelText, let length = (labelText?.length) {
+                value.beginEditing()
+                value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions(rawValue: 0), using: { (attr : [NSAttributedString.Key : Any], attRange : NSRange, _) in
+                    let newRange = attRange
+                    labelText?.addAttributes(attr, range: newRange)
+                    if newRange.location+newRange.length >= length {
+                        updateString()
+                    }
+                })
+                value.endEditing()
+            }
         }
     }
     
+    fileprivate func fetchrangeOfActionWords() {
+        actionWordRange.removeAll()
+        var indexDuplicate = 0
+        var previouseRange: NSRange?
+        for dictionary in actionWords {
+            let lblString = labelText?.string
+            let string = dictionary[ALActionWordName] as? String ?? ""
+            indexDuplicate = dictionary[ALActionWordIndex] as? Int ?? 0
+            var stringrange = NSRange()
+            var result: [String.Index] = []
+            if var start = lblString?.startIndex, let endIndex = lblString?.endIndex {
+                while let range = lblString?.range(of: lblString ?? "", options: .literal, range: start..<endIndex) {
+                    result.append(range.lowerBound)
+                    start = range.upperBound
+                }
+            }
+            let indexes = result
+
+            var dict = [String:Any]()
+            
+            let array = actionWordRange.filter(){$0[ALActionWordName] as? String == string}
+            let order = array.count
+            
+            if array.count > 0, (indexes.count) > 0, (indexes.count)>=order, let str = lblString{
+                let location = indexes[order]
+                if let toIndex = location.samePosition(in: (str.utf16)) {
+                    let fromIndex = str.utf16.startIndex
+                    let from = str.utf16.distance(from: fromIndex, to: toIndex)
+                    stringrange = NSMakeRange(from, string.count)
+                }
+            }else {
+                var range = (lblString?.range(of: string))
+                if indexDuplicate > 0 {
+                    if let preR = previouseRange{
+                        let newRange = NSRange(location: (preR.location+preR.length+1), length: ((lblString?.count ?? 0)-(preR.location+preR.length+1)))
+                        range = lblString?.range(of: string, options: [], range: Range(newRange, in: lblString ?? ""))
+                    }
+                }
+                if range == nil {
+                    stringrange = selectedStringDict["range"] as? NSRange ?? NSMakeRange(0, 1)
+                    stringrange.length = 3
+                } else if let str = lblString, let from = range?.lowerBound.samePosition(in: str.utf16), let to = range?.upperBound.samePosition(in: str.utf16) {
+                    dict[ALActionWordName] = string
+                    stringrange = NSRange(location: str.utf16.distance(from: str.utf16.startIndex, to: from), length: str.utf16.distance(from: from, to: to))
+                }
+            }
+            dict["range"] = stringrange
+            previouseRange = stringrange
+            dict[ALActionWordType] = dictionary[ALActionWordType] as? ActionType
+            dict[ALActionWordName] = dictionary[ALActionWordName] as? String
+            dict[ALActionWordOptions] = dictionary[ALActionWordOptions] as? [String]
+            dict[ALActionWordDateType] = dictionary[ALActionWordDateType] as? UIDatePicker.Mode
+            dict[ALActionWordDateFormat] = dictionary[ALActionWordDateFormat] as? String
+            dict[ALActionOrder] = dictionary[ALActionOrder] as? Int
+            dict[ALActionWordIndex] = dictionary[ALActionWordIndex] as? Int
+            actionWordRange.append(dict)
+        }
+    }
     fileprivate func showGeneralPicker(_ show: Bool) {
         pickerView.reloadAllComponents()
         self.txtField.resignFirstResponder()
@@ -424,7 +581,7 @@ class ActionLabel: UIView {
             viewController?.view.layoutIfNeeded()
         }
     }
-
+    
     fileprivate func showDatePicker(_ show: Bool) {
         self.txtField.resignFirstResponder()
         UIView.animate(withDuration: 0.3) {
@@ -439,33 +596,48 @@ class ActionLabel: UIView {
             viewController?.view.layoutIfNeeded()
         }
     }
-    
     private func actionForSelectedText(type : ActionType) {
         
         switch type {
-        case .DropDown:
-            setupDropDownView()
-            showGeneralPicker(true)
-            delegate?.actionLabelDidSelect?(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!)
-            
-        case .DateDropDown:
-            setupDateDropDownView()
-            datePickerView.datePickerMode = selectedStringDict[ALActionWordDateType] as! UIDatePickerMode
-            showDatePicker(true)
-            delegate?.actionLabelDidSelect?(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!)
-            
-        case .EditText:
-            setupAccesorView()
-            accesoryView.isHidden = false
-            txtField.text = selectedStringDict[ALActionWordName] as? String
-            txtField.becomeFirstResponder()
-            //selectedIndex += (selectedIndex < actionWords.count) ? 1 : 0
-            delegate?.actionLabelDidSelect?(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!)
-            
-        default:
-            delegate?.actionLabelDidSelect?(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!)
-
-
+            case .DropDown:
+                self.setupDropDownView()
+                let isAction = delegate?.actionLabelDidSelect(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)! , actionType: type)
+                if isAction! {
+                    self.txtField.resignFirstResponder()
+                    showGeneralPicker(true)
+                }
+            case .DateDropDown:
+                self.setupDateDropDownView()
+                let isAction = delegate?.actionLabelDidSelect(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!, actionType: type)
+                if isAction! {
+                    let pickerMode = selectedStringDict[ALActionWordDateType] as! UIDatePicker.Mode
+                    self.txtField.resignFirstResponder()
+                    datePickerView.datePickerMode = pickerMode
+                    showDatePicker(true)
+                }
+                
+            case .EditText:
+                let isAction = delegate?.actionLabelDidSelect(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!, actionType: type)
+                
+                if isAction! {
+                    setupAccesorView()
+                    accesoryView.isHidden = false
+                    if let text = selectedStringDict[ALActionWordName] as? String, text == "---" {
+                        txtField.text = ""
+                    } else {
+                        txtField.text = selectedStringDict[ALActionWordName] as? String
+                    }
+                    txtField.selectAll(txtField.text)
+                    
+                    if txtField.isFirstResponder == false{
+                        txtField.becomeFirstResponder()
+                    }
+                    //selectedIndex += (selectedIndex < actionWords.count) ? 1 : 0
+                }
+            default:
+                _ = delegate?.actionLabelDidSelect(self, selectedWord: (selectedStringDict[ALActionWordName] as? String)!, range: (selectedStringDict["range"] as? NSRange)!, actionType: type)
+                
+                
         }
     }
     
@@ -477,16 +649,18 @@ class ActionLabel: UIView {
         layoutManager.drawGlyphs(forGlyphRange: range, at: newOrigin)
     }
     
+    
     override var canBecomeFirstResponder: Bool {
         return txtField.canBecomeFirstResponder
     }
     
     override func resignFirstResponder() -> Bool {
+        self.accesoryView.isHidden = true
         return txtField.resignFirstResponder()
     }
     
     override func becomeFirstResponder() -> Bool {
-        return txtField.resignFirstResponder()
+        return txtField.becomeFirstResponder()
     }
     
     @objc private func textDidChange(notification: Notification) {
@@ -504,14 +678,15 @@ class ActionLabel: UIView {
             let dateFormatter = DateFormatter()
             dateFormatter.amSymbol = "am"
             dateFormatter.pmSymbol = "pm"
-            dateFormatter.dateFormat = selectedStringDict[ALActionWordDateFormat] as! String
+            dateFormatter.dateFormat = selectedStringDict[ALActionWordDateFormat] as? String
             let text = dateFormatter.string(from: datePickerView.date)
             string = string?.replacingOccurrences(of: word, with: text, options: String.CompareOptions.literal, range: nil)
             //agar var effectiveRange = NSRange()
             if let value = labelText, let length = (labelText?.length) {
                 labelText = NSMutableAttributedString(string: string!)
                 value.beginEditing()
-                value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions.reverse, using: { (attr : [String : Any], range : NSRange, _) in
+                
+                value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions.reverse, using: { (attr, range, _) in
                     var newRange = range
                     if range.length + range.location > (labelText?.length)! {
                         if let newLength = (labelText?.length) {
@@ -524,10 +699,10 @@ class ActionLabel: UIView {
                 value.endEditing()
             }
             
-            range.length = text.characters.count
-            labelText?.addAttributes(selectedStringDict["attributes"] as! [String : Any], range: range)
+            range.length = text.count
+            //labelText?.addAttributes(selectedStringDict["attributes"] as! [NSAttributedString.Key : Any], range: range)
             actionWords = actionWords.filter(){$0[ALActionWordName] as? String != word}
-            actionWords.append([ALActionWordName:text, ALActionWordType: selectedStringDict[ALActionWordType] ?? ActionType.Action, ALActionWordDateFormat:selectedStringDict[ALActionWordDateFormat] ?? "MMM dd, yyyy" , ALActionWordDateType: selectedStringDict[ALActionWordDateType] ?? UIDatePickerMode.date])
+            actionWords.append([ALActionWordName:text, ALActionWordType: selectedStringDict[ALActionWordType] ?? ActionType.Action, ALActionWordDateFormat:selectedStringDict[ALActionWordDateFormat] ?? "MMM dd, yyyy" , ALActionWordDateType: selectedStringDict[ALActionWordDateType] ?? UIDatePicker.Mode.date])
             actionWordRange.removeAll()
             fetchrangeOfActionWords()
             delegate?.actionLabelDidChangeDateValue?(self, selectedWord: text, index: 0, range: range)
@@ -542,6 +717,7 @@ class ActionLabel: UIView {
     
     @objc fileprivate func btnAddAction(_ sender: UIButton) {
         let index = pickerView.selectedRow(inComponent: 0)
+        let order = selectedStringDict[ALActionOrder]
         var range = selectedStringDict["range"] as! NSRange
         if range.length <= (labelText?.length)!{
             var string = labelText?.string
@@ -553,7 +729,7 @@ class ActionLabel: UIView {
             if let value = labelText, let length = (labelText?.length) {
                 labelText = NSMutableAttributedString(string: string!)
                 value.beginEditing()
-                value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions.reverse, using: { (attr : [String : Any], range : NSRange, _) in
+                value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions.reverse, using: { (attr, range, _) in
                     var newRange = range
                     if range.length + range.location > (labelText?.length)! {
                         if let newLength = (labelText?.length) {
@@ -567,13 +743,13 @@ class ActionLabel: UIView {
                 
             }
             
-            range.length = text.characters.count
-            labelText?.addAttributes(selectedStringDict["attributes"] as! [String : Any], range: range)
+            range.length = text.count
+//            labelText?.addAttributes(selectedStringDict["attributes"] as! [NSAttributedString.Key : Any], range: range)
             actionWords = actionWords.filter(){$0[ALActionWordName] as! String != word}
             actionWords.append([ALActionWordName:text, ALActionWordType: selectedStringDict[ALActionWordType] ?? ActionType.Action, ALActionWordOptions:  selectedStringDict[ALActionWordOptions] ?? [String]()])
             actionWordRange.removeAll()
             fetchrangeOfActionWords()
-            delegate?.actionLabelDidChangeTextValue?(self, selectedWord: text, index: index, range: range)
+            delegate?.actionLabelDidChangeTextValue?(self, selectedWord: text, index: index, range: range, order: order as? Int ?? 0)
         }
         showGeneralPicker(false)
     }
@@ -582,48 +758,89 @@ class ActionLabel: UIView {
         showGeneralPicker(false)
         delegate?.actionLabelDidCancelOptionSelect?(self)
     }
-    
     @objc fileprivate func btnDoneAction(_ sender: UIButton) {
-        var range = selectedStringDict["range"] as! NSRange
+        let text = (txtField.text?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? "")
+        var message = ""
+        if text.count == 0 {
+            message = Constants.plsEnterSomeValueString
+        }
+        if Int(text) == 0 {
+            message = Constants.valueCannotBeZeroString
+        }
+        if text == "---" {
+            message = Constants.plsEnterSomeValueString
+        }
+        let alert = UIAlertController(title: "", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate{
+            appDelegate.window?.rootViewController?.present(alert, animated: true, completion: nil)
+        }
+        self.manageTextFieldDone(text: text, isDone: true)
+        let linkSelectedRange = selectedStringDict["range"] as! NSRange
+        labelText?.removeAttribute(NSAttributedString.Key.backgroundColor , range:linkSelectedRange)
+        _ = self.resignFirstResponder()
+    }
+    
+    func manageTextFieldDone(text: String, isDone: Bool) {
+        let range = selectedStringDict["range"] as! NSRange
         if range.length <= (labelText?.length)!{
             var string = labelText?.string
             let word = selectedStringDict[ALActionWordName] as! String
-            let text = txtField.text ?? ""
-            string = string?.replacingOccurrences(of: word, with: text, options: String.CompareOptions.literal, range: nil)
-            //agar var effectiveRange = NSRange()
-            if let value = labelText, let length = (labelText?.length) {
-                labelText = NSMutableAttributedString(string: string!)
-                value.beginEditing()
-                value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions.reverse, using: { (attr : [String : Any], range : NSRange, _) in
-                    var newRange = range
-                    if range.length + range.location > (labelText?.length)! {
-                        if let newLength = (labelText?.length) {
-                            let length1 = (newLength - range.location)
-                            newRange = NSMakeRange(range.location,length1)
+            let order = selectedStringDict[ALActionOrder]
+            let index = selectedStringDict[ALActionWordIndex] as! Int
+            if isDone == false {
+                string = string?.replacingOccurrences(of: word, with: text, options: String.CompareOptions.literal, range: Range(range, in: string!))
+                //agar var effectiveRange = NSRange()
+                if let value = labelText, let length = (labelText?.length) {
+                    labelText = NSMutableAttributedString(string: string!)
+                    value.beginEditing()
+                    value.enumerateAttributes(in: NSRange(0..<length), options: NSAttributedString.EnumerationOptions(rawValue: 0), using: { (attr : [NSAttributedString.Key : Any], attRange : NSRange, _) in
+                        var newRange = attRange
+                        //                    if range.length + range.location > (labelText?.length)! {
+                        //                        if let newLength = (labelText?.length) {
+                        //                            let length1 = (newLength - range.location)
+                        //                            newRange = NSMakeRange(range.location,length1)
+                        //                        }
+                        //                    } else
+                        if word.count < text.count, range.location<attRange.location{
+                            newRange = NSMakeRange(attRange.location+(text.count - word.count),attRange.length)
+                        } else if word.count > text.count, range.location<attRange.location{
+                            newRange = NSMakeRange(attRange.location - (word.count - text.count),attRange.length)
+                        } else if word.count > text.count, ((range.location==attRange.location+1) || (range.location==attRange.location)){
+                            newRange = NSMakeRange(range.location,text.count)
+                        } else if word.count < text.count, ((range.location==attRange.location+1) || (range.location==attRange.location)) {
+                            newRange = NSMakeRange(range.location,text.count)
                         }
-                    }
-                    labelText?.addAttributes(attr, range: newRange)
-                })
-                value.endEditing()
+                        labelText?.addAttributes(attr, range: newRange)
+                    })
+                    value.endEditing()
+                }
                 
+                //range.length = text.count
+                //labelText?.addAttributes(selectedStringDict["attributes"] as! [String : Any], range: range)
+                
+                actionWords = actionWords.filter({ $0[ALActionWordName] as! String != word || $0[ALActionWordIndex] as! Int != index })
+                actionWords.append([ALActionWordName:text, ALActionWordType: selectedStringDict[ALActionWordType] ?? ActionType.Action, ALActionWordOptions:  selectedStringDict[ALActionWordOptions] ?? [String](), ALActionOrder: selectedStringDict[ALActionOrder] ?? 0, ALActionWordIndex: selectedStringDict[ALActionWordIndex] ?? 0])
+                actionWordRange.removeAll()
+                fetchrangeOfActionWords()
             }
-            range.length = text.characters.count
-            labelText?.addAttributes(selectedStringDict["attributes"] as! [String : Any], range: range)
-            actionWords = actionWords.filter(){$0[ALActionWordName] as! String != word}
-            actionWords.append([ALActionWordName:text, ALActionWordType: selectedStringDict[ALActionWordType] ?? ActionType.Action, ALActionWordOptions:  selectedStringDict[ALActionWordOptions] ?? [String]()])
-            actionWordRange.removeAll()
-            fetchrangeOfActionWords()
-            delegate?.actionLabelDidChangeOptionValue?(self, selectedWord: text, index: 0, range: range)
+            var stringValue = text
+            // if isDone == true {
+            if stringValue == "---"{
+                stringValue = ""
+            }
+            delegate?.actionLabelDidChangeTextValue?(self, selectedWord: stringValue, index: index , range: range, order: order as? Int ?? 0)
+            //}
         }
-        _ = self.resignFirstResponder()
     }
-
-    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        textContainer.size = CGSize(width: frame.size.width, height: CGFloat.greatestFiniteMagnitude)
+        invalidateIntrinsicContentSize()
+    }
     
     //MARK: Auto Layout
-    open override var intrinsicContentSize: CGSize {
-        _ = super.intrinsicContentSize
-        textContainer.size = CGSize(width: self.frame.size.width, height: CGFloat.greatestFiniteMagnitude)
+    override var intrinsicContentSize: CGSize {
         let size = layoutManager.usedRect(for: textContainer)
         return CGSize(width: ceil(size.width), height: ceil(size.height))
     }
@@ -634,18 +851,24 @@ class ActionLabel: UIView {
         let glyphOriginY = heightCorrection > 0 ? rect.origin.y + heightCorrection : rect.origin.y
         return CGPoint(x: rect.origin.x, y: glyphOriginY)
     }
-
-    
     
     //MARK: Touch Event
     @objc private func tap(_ gestureRecognizer: UITapGestureRecognizer) {
-        
+        if let linkSelectedRange = selectedStringDict["range"] {
+            let range = linkSelectedRange as! NSRange
+            labelText?.removeAttribute(NSAttributedString.Key.backgroundColor , range:range)
+            setNeedsDisplay()
+        }
+        let location = gestureRecognizer.location(in: self)
+        selectedLocation = location
+        self.recogniseRange(location : location)
+    }
+    fileprivate func recogniseRange(location : CGPoint){
         for dict in actionWordRange {
             let linkRange = dict["range"] as! NSRange
             guard textStorage.length > 0 else {
                 return
             }
-            let location = gestureRecognizer.location(in: self)
             var correctLocation = location
             correctLocation.y -= heightCorrection
             let boundingRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: 0, length: textStorage.length), in: textContainer)
@@ -654,16 +877,19 @@ class ActionLabel: UIView {
             }
             
             let index = layoutManager.glyphIndex(for: correctLocation, in: textContainer)
-            
-            if index >= linkRange.location && index <= linkRange.location + linkRange.length {
+            let type = dict[ALActionWordType] as? ActionType ?? ActionType.Action
+            let value = linkRange.location + linkRange.length+((type == ActionType.DropDown || type == ActionType.DateDropDown) ? 1 : 0)
+            if index >= linkRange.location && index <= value {
                 selectedStringDict = dict
+                selectedRange = linkRange
+                labelText?.addAttributes([NSAttributedString.Key.backgroundColor: UIColor.lightGray.withAlphaComponent(0.4)], range: linkRange)
+                updateTextStorage()
                 actionForSelectedText(type: dict[ALActionWordType] as! ActionType)
                 break
             }
             selectedIndex += (selectedIndex < actionWords.count) ? 1 : 0
         }
     }
-
 }
 
 //MARK: Picker Data Source
@@ -686,6 +912,8 @@ extension ActionLabel : UIPickerViewDelegate {
     }
 }
 
+
+
 //MARK: Text Field Delegates
 extension ActionLabel: UITextFieldDelegate {
     func textFieldShouldBeginEditing(_ textField: UITextField) -> Bool {
@@ -705,6 +933,40 @@ extension ActionLabel: UITextFieldDelegate {
     }
     
     func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool  {
+        if let text = txtField.text {
+            var input = (text as NSString).replacingCharacters(in: range, with: string)
+            input = input.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            if input.count > 0 {
+                self.manageTextFieldDone(text: input, isDone: false)
+                selectedStringDict[ALActionWordName] = input
+                let lblString = labelText?.string ?? ""
+                //let range = lblString.range(of: input)
+                let newRange: Range<String.Index>?
+                if let rangeOfSubString = selectedStringDict["range"] as? NSRange {
+                    newRange = Range(NSRange(location: rangeOfSubString.location, length: input.count), in: lblString)
+                } else {
+                    newRange = lblString.range(of: input)
+                }
+                let range = lblString.range(of: input, options: [], range: newRange)
+                var stringrange : NSRange?
+                if range == nil {
+                    stringrange = selectedRange
+                } else {
+                    let from = range?.lowerBound.samePosition(in: (lblString.utf16))
+                    let to = range?.upperBound.samePosition(in: (lblString.utf16))
+                    stringrange = NSRange(location: (lblString.utf16.distance(from: (lblString.utf16.startIndex), to: from!)),
+                                          length: (lblString.utf16.distance(from: from!, to: to!)))
+                }
+                selectedStringDict["range"] = stringrange
+                //actionForSelectedText(type: selectedStringDict[ALActionWordType] as! ActionType)
+            } else{
+                self.manageTextFieldDone(text: "---", isDone: false)
+                selectedStringDict[ALActionWordName] = "---"
+                selectedRange?.length = 3
+                selectedStringDict["range"] = selectedRange
+                actionForSelectedText(type: selectedStringDict[ALActionWordType] as! ActionType)
+            }
+        }
         return delegate?.actionLabelTextOption?(self, shouldChangeCharactersIn: range, replacementString: string) ?? true
     }
     
@@ -714,9 +976,7 @@ extension ActionLabel: UITextFieldDelegate {
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         
-        //selectedIndex += (selectedIndex < actionWords.count) ? 1 : 0
-        //self.btnDoneAction(UIButton())
-        
+        self.txtField.resignFirstResponder()
         return delegate?.actionLabelTextOptionShouldReturn?(self) ?? true
     }
 }

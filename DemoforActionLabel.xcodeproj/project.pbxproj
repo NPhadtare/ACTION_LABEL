@@ -14,7 +14,7 @@
 		0D45C4FA1ECDA0E000F421CE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 0D45C4F81ECDA0E000F421CE /* LaunchScreen.storyboard */; };
 		0D45C5051ECDA0E000F421CE /* DemoforActionLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D45C5041ECDA0E000F421CE /* DemoforActionLabelTests.swift */; };
 		0D45C5101ECDA0E000F421CE /* DemoforActionLabelUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D45C50F1ECDA0E000F421CE /* DemoforActionLabelUITests.swift */; };
-		0D45C52F1ECDC58400F421CE /* ActionLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D45C52E1ECDC58400F421CE /* ActionLabel.swift */; };
+		C379816926B959B400A58B5A /* ActionLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C379816826B959B400A58B5A /* ActionLabel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,7 +48,7 @@
 		0D45C50B1ECDA0E000F421CE /* DemoforActionLabelUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DemoforActionLabelUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D45C50F1ECDA0E000F421CE /* DemoforActionLabelUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoforActionLabelUITests.swift; sourceTree = "<group>"; };
 		0D45C5111ECDA0E000F421CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		0D45C52E1ECDC58400F421CE /* ActionLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ActionLabel.swift; sourceTree = "<group>"; };
+		C379816826B959B400A58B5A /* ActionLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ActionLabel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -99,7 +99,7 @@
 		0D45C4EE1ECDA0E000F421CE /* DemoforActionLabel */ = {
 			isa = PBXGroup;
 			children = (
-				0D45C52E1ECDC58400F421CE /* ActionLabel.swift */,
+				C379816826B959B400A58B5A /* ActionLabel.swift */,
 				0D45C4EF1ECDA0E000F421CE /* AppDelegate.swift */,
 				0D45C4F11ECDA0E000F421CE /* ViewController.swift */,
 				0D45C4F31ECDA0E000F421CE /* Main.storyboard */,
@@ -215,6 +215,7 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 				Base,
 			);
@@ -262,7 +263,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0D45C52F1ECDC58400F421CE /* ActionLabel.swift in Sources */,
+				C379816926B959B400A58B5A /* ActionLabel.swift in Sources */,
 				0D45C4F21ECDA0E000F421CE /* ViewController.swift in Sources */,
 				0D45C4F01ECDA0E000F421CE /* AppDelegate.swift in Sources */,
 			);
@@ -360,12 +361,13 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 10.3;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -405,10 +407,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 10.3;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
@@ -422,7 +425,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = Medsolis.DemoforActionLabel;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -434,7 +437,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = Medsolis.DemoforActionLabel;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
